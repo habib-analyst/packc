@@ -1,0 +1,154 @@
+{
+  "grammar_rules": 19,
+  "grammar_productions": [
+    "pack_file    := block* EOF",
+    "block        := pack_block | schema_block | skill_block | flow_block | escalate_block",
+    "pack_block   := 'pack' IDENT '{' pack_field (',' pack_field)* ','? '}'",
+    "pack_field   := 'name' ':' STRING | 'version' ':' STRING | 'description' ':' STRING | 'author' ':' STRING | 'tools' ':' '[' STRING (',' STRING)* ','? ']'",
+    "schema_block := 'schema' IDENT '{' schema_field (',' schema_field)* ','? '}'",
+    "schema_field := IDENT ':' type ('=' literal)?",
+    "type         := base_type '?'?",
+    "base_type    := 'string' | 'int' | 'float' | 'bool' | 'list' '[' type ']' | 'enum' '{' IDENT (',' IDENT)* ','? '}' | IDENT",
+    "literal      := STRING | NUMBER | BOOL | IDENT | '[' literal (',' literal)* ','? ']'",
+    "skill_block  := 'skill' IDENT '{' skill_field (',' skill_field)* ','? '}'",
+    "skill_field  := 'description' ':' STRING | 'trigger' ':' '[' STRING (',' STRING)* ','? ']' | 'input' ':' IDENT | 'output' ':' IDENT | 'tool' ':' STRING | 'steps' ':' '[' STRING (',' STRING)* ','? ']'",
+    "flow_block   := 'flow' IDENT '{' 'start' ':' IDENT (',' flow_edge)* ','? '}'",
+    "flow_edge    := 'on' IDENT '->' IDENT",
+    "escalate_blk := 'escalate' '{' escalate_item (',' escalate_item)* ','? '}'",
+    "escalate_item:= 'context' ':' IDENT | 'defaults' ':' '{' STRING ':' tier (',' STRING ':' tier)* ','? '}' | rule",
+    "rule         := 'rule' IDENT ':' ('when' condition)? '->' 'tier' ':' tier",
+    "condition    := IDENT comp_op literal",
+    "comp_op      := '>' | '>=' | '<' | '<=' | '==' | '!='",
+    "tier         := 'auto' | 'confirm' | 'human_only'"
+  ],
+  "parse": [
+    {
+      "file": "synth-large.pack",
+      "lines": 1266,
+      "parse_ms_mean": 21.254,
+      "parse_ms_sd": 4.456
+    },
+    {
+      "file": "synth-medium.pack",
+      "lines": 350,
+      "parse_ms_mean": 5.226,
+      "parse_ms_sd": 0.331
+    },
+    {
+      "file": "synth-small.pack",
+      "lines": 86,
+      "parse_ms_mean": 1.214,
+      "parse_ms_sd": 0.051
+    },
+    {
+      "file": "clinic.pack",
+      "lines": 133,
+      "parse_ms_mean": 1.916,
+      "parse_ms_sd": 0.369
+    },
+    {
+      "file": "hostel-ops.pack",
+      "lines": 403,
+      "parse_ms_mean": 6.021,
+      "parse_ms_sd": 0.548
+    },
+    {
+      "file": "restaurant.pack",
+      "lines": 139,
+      "parse_ms_mean": 2.092,
+      "parse_ms_sd": 0.383
+    }
+  ],
+  "violations": [
+    {
+      "violation": "unknown schema ref",
+      "want": "SKILL002",
+      "got": [
+        "SKILL002",
+        "SKILL002"
+      ],
+      "detected": "1/1"
+    },
+    {
+      "violation": "bad default type",
+      "want": "SCHEMA005",
+      "got": [
+        "SCHEMA005"
+      ],
+      "detected": "1/1"
+    },
+    {
+      "violation": "trigger overlap",
+      "want": "TRIG001",
+      "got": [
+        "TRIG001"
+      ],
+      "detected": "1/1"
+    },
+    {
+      "violation": "flow to undefined skill",
+      "want": "FLOW002",
+      "got": [
+        "FLOW002"
+      ],
+      "detected": "1/1"
+    },
+    {
+      "violation": "invalid tier",
+      "want": "ESC001",
+      "got": [
+        "ESC001"
+      ],
+      "detected": "1/1"
+    },
+    {
+      "violation": "duplicate enum value",
+      "want": "SCHEMA003",
+      "got": [
+        "SCHEMA003"
+      ],
+      "detected": "1/1"
+    },
+    {
+      "violation": "unknown field in escalate condition",
+      "want": "ESC002",
+      "got": [
+        "ESC002"
+      ],
+      "detected": "1/1"
+    },
+    {
+      "violation": "unresolvable tool-ref",
+      "want": "SKILL004",
+      "got": [
+        "SKILL004"
+      ],
+      "detected": "1/1"
+    }
+  ],
+  "violation_detection": "8/8",
+  "roundtrip": {
+    "check (parse+typecheck)": {
+      "ms_mean": 9.609,
+      "ms_sd": 0.446
+    },
+    "emit SKILL.md": {
+      "ms_mean": 0.104,
+      "ms_sd": 0.012
+    },
+    "emit MCP server": {
+      "ms_mean": 0.475,
+      "ms_sd": 0.075
+    },
+    "emit conformance tests": {
+      "ms_mean": 0.162,
+      "ms_sd": 0.026
+    },
+    "run conformance suite (50 tests)": {
+      "ms_mean": 363.678,
+      "ms_sd": 56.207
+    }
+  },
+  "conformance_pass": true,
+  "conformance_summary": "50 passed in 0.04s"
+}

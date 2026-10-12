@@ -1,0 +1,86 @@
+pack synth {
+  name: "synth",
+  version: "0.1.0",
+  description: "synthetic corpus pack",
+  author: "packc",
+  tools: ["tool_0", "tool_1", "tool_2", "tool_3", "tool_4"],
+}
+
+schema S0 {
+  f0: list[string],
+  f1: string,
+  f2: string,
+  f3: list[string],
+}
+
+schema S1 {
+  f0: float,
+  f1: int = 1,
+  f2: list[string],
+  f3: string,
+}
+
+schema S2 {
+  f0: list[string],
+  f1: list[string],
+  f2: enum { a, b, c }?,
+  f3: string,
+}
+
+schema Ctx {
+  amount_pkr: int = 0,
+}
+
+skill skill-0 {
+  description: "Synthetic skill 0.",
+  trigger: ["zq0 wq0", "eq0 rq0"],
+  input: S0,
+  tool: "tool_0",
+  steps: ["Step one for skill 0.", "Step two for skill 0."],
+}
+
+skill skill-1 {
+  description: "Synthetic skill 1.",
+  trigger: ["zq1 wq1", "eq1 rq1"],
+  input: S1,
+  tool: "tool_1",
+  steps: ["Step one for skill 1.", "Step two for skill 1."],
+}
+
+skill skill-2 {
+  description: "Synthetic skill 2.",
+  trigger: ["zq2 wq2", "eq2 rq2"],
+  input: S2,
+  tool: "tool_2",
+  steps: ["Step one for skill 2.", "Step two for skill 2."],
+}
+
+skill skill-3 {
+  description: "Synthetic skill 3.",
+  trigger: ["zq3 wq3", "eq3 rq3"],
+  input: S0,
+  tool: "tool_3",
+  steps: ["Step one for skill 3.", "Step two for skill 3."],
+}
+
+skill skill-4 {
+  description: "Synthetic skill 4.",
+  trigger: ["zq4 wq4", "eq4 rq4"],
+  input: S1,
+  tool: "tool_4",
+  steps: ["Step one for skill 4.", "Step two for skill 4."],
+}
+
+flow main {
+  start: skill-0,
+  on ev1 -> skill-1,
+  on ev2 -> skill-2,
+  on ev3 -> skill-3,
+  on ev4 -> skill-4,
+}
+
+escalate {
+  context: Ctx,
+  rule big: when amount_pkr > 100 -> tier: confirm,
+  rule fallback: -> tier: auto,
+}
