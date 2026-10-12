@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "packc"
+version = "0.1.0"
+description = "The vertical skill-pack authoring language: declare skills once with typed schemas, compile to SKILL.md + a working MCP server + conformance tests."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Habib Ur Rehman" }]
+requires-python = ">=3.10"
+keywords = ["agents", "skills", "dsl", "mcp", "skill-md", "compiler"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Software Development :: Compilers",
+]
+
+[project.scripts]
+packc = "packc.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["packc*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
