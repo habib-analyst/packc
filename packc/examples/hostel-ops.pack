@@ -1,0 +1,403 @@
+# hostel-ops.pack — flagship dogfood for packc.
+#
+# Re-authors innkeeper's hostel vertical (innkeeper/skills/hostel/pack.py +
+# innkeeper/core/escalation.py) as a typed packc pack: the same 14 skills,
+# the same escalation defaults/overrides, the same booking/checkout flows.
+# Author the pack once; packc emits SKILL.md + a working MCP server + tests.
+
+pack hostel-ops {
+  name: "hostel-ops",
+  version: "1.0.0",
+  description: "Hostel front-desk skill pack: availability, booking, check-in/out, housekeeping, reviews, owner digest.",
+  author: "Habib Ur Rehman",
+  tools: [
+    "guest_greet",
+    "rooms_available",
+    "booking_create",
+    "booking_cancel",
+    "booking_modify",
+    "booking_checkin",
+    "booking_checkout",
+    "late_checkout_quote",
+    "task_create",
+    "payment_info_lookup",
+    "complaint_brief",
+    "review_link_fetch",
+    "digest_build",
+    "proposal_decide",
+  ],
+}
+
+# ---------------------------------------------------------------- schemas ---
+
+schema RoomOption {
+  room_id: string,
+  name: string,
+  room_type: string,
+  capacity: int,
+  price_pkr: int,
+}
+
+schema AvailabilityRequest {
+  check_in: string,
+  check_out: string,
+  room_type: enum { standard, deluxe, suite }?,
+  guests: int = 1,
+}
+
+schema Availability {
+  check_in: string,
+  check_out: string,
+  rooms: list[RoomOption],
+  priced: bool = true,
+}
+
+schema BookingRequest {
+  check_in: string,
+  check_out: string,
+  room_id: string,
+  guest_name: string = "Guest",
+  guests: int = 1,
+  notes: string?,
+}
+
+schema BookingConfirmation {
+  booking_id: string,
+  room_name: string,
+  check_in: string,
+  check_out: string,
+  total_pkr: int,
+  status: enum { confirmed, pending_approval },
+}
+
+schema BookingRef {
+  booking_id: string?,
+}
+
+schema CancelResult {
+  cancelled_booking_id: string,
+  status: enum { cancelled, not_found },
+}
+
+schema ModifyRequest {
+  booking_id: string?,
+  new_check_in: string,
+  new_check_out: string,
+}
+
+schema ModifyResult {
+  modified_booking_id: string,
+  new_check_in: string,
+  new_check_out: string,
+  new_total_pkr: int,
+}
+
+schema GuestMessage {
+  text: string,
+}
+
+schema SimpleReply {
+  reply: string,
+}
+
+schema HousekeepingRequest {
+  detail: string,
+  room_id: string?,
+  booking_id: string?,
+}
+
+schema TaskResult {
+  task_id: string,
+  kind: string,
+  status: enum { open, dispatched },
+}
+
+schema PaymentMethod {
+  method: string,
+  detail: string,
+}
+
+schema PaymentInfo {
+  methods: list[PaymentMethod],
+}
+
+schema Complaint {
+  detail: string,
+  sentiment: string = "neutral",
+}
+
+schema ComplaintOutcome {
+  acknowledged: bool,
+  tier: enum { auto, confirm, human_only },
+}
+
+schema ReviewInfo {
+  url: string,
+}
+
+schema DigestRequest {
+  date: string?,
+}
+
+schema DigestReport {
+  date: string,
+  occupancy_pct: float,
+  revenue_pkr: int,
+  arrivals: int,
+  departures: int,
+  open_tasks: int,
+  summary: string,
+}
+
+schema OwnerDecision {
+  proposal_id: string,
+  verdict: enum { approve, reject },
+}
+
+schema DecisionResult {
+  proposal_id: string,
+  verdict: enum { approve, reject },
+  executed: bool,
+}
+
+schema LateCheckoutQuote {
+  fee_pkr: int,
+  extended_until: string,
+}
+
+# Escalation conditions may only reference fields declared here.
+schema EscalationContext {
+  amount_pkr: int = 0,
+  sentiment: string = "neutral",
+  high_value_threshold_pkr: int = 100000,
+  angry_guest: bool = false,
+  overbooking_risk: bool = false,
+  is_refund: bool = false,
+}
+
+# ----------------------------------------------------------------- skills ---
+
+skill greeting {
+  description: "Greet the guest and offer the front-desk menu.",
+  trigger: ["hello", "hi", "assalam o alaikum", "good morning"],
+  input: GuestMessage,
+  output: SimpleReply,
+  tool: "guest_greet",
+  steps: [
+    "Greet the guest by the property name.",
+    "List what the desk can do: availability, booking, stay help.",
+    "Ask for dates in one short line.",
+  ],
+}
+
+skill check-availability {
+  description: "Check room availability for given dates.",
+  trigger: ["check availability", "room available", "is there a room free", "any vacancy"],
+  input: AvailabilityRequest,
+  output: Availability,
+  tool: "rooms_available",
+  steps: [
+    "Parse check_in/check_out from the guest message; ask if either is missing.",
+    "Query the backend ledger for rooms_available(check_in, check_out, room_type).",
+    "Reply with a priced list of up to 6 rooms; ask for the room choice.",
+  ],
+}
+
+skill book-room {
+  description: "Create a confirmed booking for a chosen room and dates.",
+  trigger: ["book a room", "reserve this room", "confirm my booking"],
+  input: BookingRequest,
+  output: BookingConfirmation,
+  tool: "booking_create",
+  steps: [
+    "Match the named room against the quoted availability options (cheapest first).",
+    "Re-verify the room is still free for the dates before writing.",
+    "Create the booking, journal it to the ledger, and dispatch a check-in prep task.",
+    "Reply with the booking ID, total in PKR, and payment instructions.",
+  ],
+}
+
+skill cancel-booking {
+  description: "Cancel the guest's active booking.",
+  trigger: ["cancel my booking", "cancel the reservation"],
+  input: BookingRef,
+  output: CancelResult,
+  tool: "booking_cancel",
+  steps: [
+    "Look up the active booking for the sender's phone number.",
+    "Cancel it via the escalation policy (confirm tier).",
+    "Confirm the cancellation to the guest; no charge.",
+  ],
+}
+
+skill modify-booking {
+  description: "Move a booking to new dates and reprice it.",
+  trigger: ["change my booking dates", "shift my booking", "modify reservation"],
+  input: ModifyRequest,
+  output: ModifyResult,
+  tool: "booking_modify",
+  steps: [
+    "Look up the active booking for the sender's phone number.",
+    "Ask for the new dates if they were not given.",
+    "Update the booking and reprice by nights times the room rate.",
+    "Confirm the new dates and total to the guest.",
+  ],
+}
+
+skill check-in {
+  description: "Check the guest in and share stay info.",
+  trigger: ["i want to check in", "we have arrived"],
+  input: BookingRef,
+  output: SimpleReply,
+  tool: "booking_checkin",
+  steps: [
+    "Mark the active booking checked_in.",
+    "Send the welcome message with WiFi details and checkout time.",
+  ],
+}
+
+skill check-out {
+  description: "Check the guest out, dispatch cleaning, and ask for a review.",
+  trigger: ["check out now", "we are leaving today"],
+  input: BookingRef,
+  output: SimpleReply,
+  tool: "booking_checkout",
+  steps: [
+    "Mark the active booking checked_out.",
+    "Create a housekeeping task for a full clean of the room.",
+    "Thank the guest and send the Google review link.",
+  ],
+}
+
+skill late-checkout {
+  description: "Quote the late-checkout fee and confirm it.",
+  trigger: ["late checkout please", "extend checkout time"],
+  input: BookingRef,
+  output: LateCheckoutQuote,
+  tool: "late_checkout_quote",
+  steps: [
+    "Quote the late-checkout fee from the property profile.",
+    "On 'yes', add the fee to the booking and confirm.",
+  ],
+}
+
+skill housekeeping {
+  description: "Dispatch a housekeeping task for a guest request.",
+  trigger: ["need fresh towels", "clean my room", "send housekeeping"],
+  input: HousekeepingRequest,
+  output: TaskResult,
+  tool: "task_create",
+  steps: [
+    "Record the request detail (first 200 chars).",
+    "Create an open staff task linked to the guest's room when known.",
+    "Notify the staff group and reassure the guest.",
+  ],
+}
+
+skill payment-info {
+  description: "Share the property's payment methods.",
+  trigger: ["how do i pay", "payment methods", "bank account details"],
+  input: GuestMessage,
+  output: PaymentInfo,
+  tool: "payment_info_lookup",
+  steps: [
+    "List each payment method with its account detail.",
+    "Ask the guest to share the screenshot or transaction ID after paying.",
+  ],
+}
+
+skill complaint {
+  description: "Acknowledge a complaint and brief the owner personally.",
+  trigger: ["i want to complain", "terrible service", "not happy with room"],
+  input: Complaint,
+  output: ComplaintOutcome,
+  tool: "complaint_brief",
+  steps: [
+    "Empathize immediately in one message (auto tier).",
+    "Draft a briefing for the owner to resolve personally (human_only tier).",
+    "Tell the guest the manager will reply here personally, shortly.",
+  ],
+}
+
+skill review {
+  description: "Send the Google review link on request.",
+  trigger: ["leave a google review", "review link please"],
+  input: GuestMessage,
+  output: ReviewInfo,
+  tool: "review_link_fetch",
+  steps: [
+    "Send the property's Google review link with a short thank-you.",
+  ],
+}
+
+skill owner-digest {
+  description: "Build the owner's daily P&L-in-chat digest.",
+  trigger: ["send daily digest", "today's summary report"],
+  input: DigestRequest,
+  output: DigestReport,
+  tool: "digest_build",
+  steps: [
+    "Compute occupancy, revenue on books, arrivals, departures, open tasks.",
+    "Append any ledger anomalies.",
+    "Render the WhatsApp-formatted digest and send it to the owner.",
+  ],
+}
+
+skill owner-approve {
+  description: "Apply the owner's APPROVE/REJECT verdict on a pending proposal.",
+  trigger: ["approve this proposal", "reject the request"],
+  input: OwnerDecision,
+  output: DecisionResult,
+  tool: "proposal_decide",
+  steps: [
+    "Parse the verdict and proposal ID from the owner's message.",
+    "On approve, execute the proposed action; on reject, inform the guest.",
+    "Journal the verdict to the ledger.",
+  ],
+}
+
+# ------------------------------------------------------------------ flows ---
+
+flow booking {
+  start: check-availability,
+  on rooms_found -> book-room,
+  on rooms_empty -> check-availability,
+}
+
+flow checkout {
+  start: check-out,
+  on done -> review,
+}
+
+flow owner-ops {
+  start: owner-digest,
+  on proposal -> owner-approve,
+}
+
+# --------------------------------------------------------------- escalate ---
+# Mirrors innkeeper/core/escalation.py hostel_policy(): defaults per action
+# prefix, overrides as ordered rules, fail-closed fallback (confirm).
+
+escalate {
+  context: EscalationContext,
+  defaults: {
+    "message.send": auto,
+    "booking.create": auto,
+    "booking.checkin": auto,
+    "booking.checkout": auto,
+    "task.create": auto,
+    "task.done": auto,
+    "guest.upsert": auto,
+    "review.request": auto,
+    "digest.send": auto,
+    "payment.record": confirm,
+    "booking.cancel": confirm,
+    "booking.modify": confirm,
+    "complaint.brief": human_only,
+  },
+  rule high_value: when amount_pkr > 100000 -> tier: confirm,
+  rule refund: when is_refund == true -> tier: human_only,
+  rule angry_guest: when sentiment == "angry" -> tier: confirm,
+  rule overbooking: when overbooking_risk == true -> tier: confirm,
+  rule fallback: -> tier: confirm,
+}
